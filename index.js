@@ -1,31 +1,55 @@
-const express = require("express");
-const fetch = require("node-fetch");
+const express = require('express');
+const bodyParser = require('body-parser');
+const fetch = require('node-fetch');
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+
 const app = express();
+const port = process.env.PORT || 10000;
 
-app.use(express.json());
+app.use(bodyParser.json());
 
-app.post("/test", async (req, res) => {
-  const { videoUrl, audioUrl } = req.body;
+app.get('/', (req, res) => {
+  res.send('FFmpeg Merge API is running');
+});
 
+app.post('/merge', async (req, res) => {
   try {
-    const videoRes = await fetch(videoUrl);
-    const audioRes = await fetch(audioUrl);
+    const { videoUrl, audioUrl } = req.body;
 
-    if (!videoRes.ok || !audioRes.ok) {
-      return res.status(400).json({
-        error: "Unable to download one or both files.",
-        videoStatus: videoRes.status,
-        audioStatus: audioRes.status,
-      });
+    if (!videoUrl || !audioUrl) {
+      return res.status(400).json({ error: 'Missing videoUrl or audioUrl' });
     }
 
-    return res.json({ message: "Both files are accessible!" });
-  } catch (err) {
-    return res.status(500).json({ error: "Fetch failed", details: err.message });
-  }
-});
+    const videoPath = path.join(__dirname, 'input.mp4');
+    const audioPath = path.join(__dirname, 'input.mp3');
+    const outputPath = path.join(__dirname, 'output.mp4');
 
-app.listen(10000, () => {
-  console.log("Test server running on port 10000");
-});
+    const downloadFile = async (url, dest) => {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to download ${url}`);
+      const buffer = await response.buffer();
+      fs.writeFileSync(dest, buffer);
+    };
 
+    await downloadFile(videoUrl, videoPath);
+    await downloadFile(audioUrl, audioPath);
+
+    const ffmpegCommand = `ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -shortest "${outputPath}"`;
+
+    exec(ffmpegCommand, (err, stdout, stderr) => {
+      if (err) {
+        console.error('FFmpeg error:', stderr);
+        return res.status(500).json({ error: 'Failed to merge video and audio' });
+      }
+
+      res.sendFile(outputPath, () => {
+        fs.unlinkSync(videoPath);
+        fs.unlinkSync(audioPath);
+        fs.unlinkSync(outputPath);
+      });
+    });
+
+  } catch (error) {
+    console.error(er
