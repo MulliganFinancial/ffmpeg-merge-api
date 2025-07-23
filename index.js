@@ -52,4 +52,5 @@ app.post('/merge', async (req, res) => {
     });
 
   } catch (error) {
-    console.error(er
+    console.error(err);
+
